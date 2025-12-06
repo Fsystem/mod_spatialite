@@ -1,0 +1,17 @@
+# Build output
+output/
+*.zip
+*.tar.gz
+*.7z
+
+# Extracted files
+extracted/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

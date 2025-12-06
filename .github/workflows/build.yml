@@ -1,0 +1,286 @@
+name: Build mod_spatialite
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SpatiaLite version to build'
+        required: true
+        default: '5.1.0'
+  release:
+    types: [created]
+
+env:
+  SPATIALITE_VERSION: ${{ github.event.inputs.version || '5.1.0' }}
+
+jobs:
+  # ============================================
+  # Windows x64 - Download official binaries
+  # ============================================
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download official binaries
+        shell: pwsh
+        run: |
+          $version = "${{ env.SPATIALITE_VERSION }}"
+          $url = "http://www.gaia-gis.it/gaia-sins/windows-bin-amd64/mod_spatialite-${version}-win-amd64.7z"
+          Write-Host "Downloading from: $url"
+
+          # Download with retry
+          $maxRetries = 3
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile "mod_spatialite.7z" -UseBasicParsing
+              break
+            } catch {
+              if ($i -eq $maxRetries) { throw }
+              Write-Host "Retry $i of $maxRetries..."
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          # Extract
+          7z x mod_spatialite.7z -oextracted
+
+          # List contents
+          Get-ChildItem -Path extracted -Recurse | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Package binaries
+        shell: pwsh
+        run: |
+          $version = "${{ env.SPATIALITE_VERSION }}"
+
+          # Find the mod_spatialite directory
+          $sourceDir = Get-ChildItem -Path extracted -Directory | Select-Object -First 1
+
+          # Create output directory
+          New-Item -ItemType Directory -Force -Path output
+
+          # Copy all DLLs
+          Copy-Item -Path "$($sourceDir.FullName)\*.dll" -Destination output\
+
+          # List what we're packaging
+          Write-Host "Packaging the following files:"
+          Get-ChildItem -Path output | ForEach-Object { Write-Host "  $($_.Name)" }
+
+          # Create zip
+          Compress-Archive -Path output\* -DestinationPath "mod_spatialite-${version}-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: mod_spatialite-*.zip
+
+  # ============================================
+  # Windows x86 - Download official binaries
+  # ============================================
+  windows-x86:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download official binaries
+        shell: pwsh
+        run: |
+          $version = "${{ env.SPATIALITE_VERSION }}"
+          $url = "http://www.gaia-gis.it/gaia-sins/windows-bin-x86/mod_spatialite-${version}-win-x86.7z"
+          Write-Host "Downloading from: $url"
+
+          $maxRetries = 3
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile "mod_spatialite.7z" -UseBasicParsing
+              break
+            } catch {
+              if ($i -eq $maxRetries) { throw }
+              Write-Host "Retry $i of $maxRetries..."
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          7z x mod_spatialite.7z -oextracted
+          Get-ChildItem -Path extracted -Recurse | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Package binaries
+        shell: pwsh
+        run: |
+          $version = "${{ env.SPATIALITE_VERSION }}"
+          $sourceDir = Get-ChildItem -Path extracted -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path output
+          Copy-Item -Path "$($sourceDir.FullName)\*.dll" -Destination output\
+          Write-Host "Packaging the following files:"
+          Get-ChildItem -Path output | ForEach-Object { Write-Host "  $($_.Name)" }
+          Compress-Archive -Path output\* -DestinationPath "mod_spatialite-${version}-windows-x86.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86
+          path: mod_spatialite-*.zip
+
+  # ============================================
+  # macOS Intel (x64)
+  # ============================================
+  macos-x64:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libspatialite via Homebrew
+        run: |
+          # Link system cmake to Homebrew so it doesn't build from source
+          CMAKE_VERSION=$(cmake --version | head -1 | awk '{print $3}')
+          sudo mkdir -p /usr/local/Cellar/cmake/${CMAKE_VERSION}/bin
+          sudo ln -sf $(which cmake) /usr/local/Cellar/cmake/${CMAKE_VERSION}/bin/cmake
+          sudo ln -sf $(which ctest) /usr/local/Cellar/cmake/${CMAKE_VERSION}/bin/ctest
+          sudo ln -sf $(which cpack) /usr/local/Cellar/cmake/${CMAKE_VERSION}/bin/cpack
+          brew link --overwrite cmake 2>/dev/null || true
+
+          brew install libspatialite
+
+      - name: Bundle dependencies
+        run: |
+          chmod +x scripts/bundle-macos.sh
+          ./scripts/bundle-macos.sh x64
+
+      - name: Create archive
+        run: |
+          version="${{ env.SPATIALITE_VERSION }}"
+          cd output
+          tar -czvf "../mod_spatialite-${version}-macos-x64.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64
+          path: mod_spatialite-*.tar.gz
+
+  # ============================================
+  # macOS Apple Silicon (arm64)
+  # ============================================
+  macos-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libspatialite via Homebrew
+        run: |
+          brew update
+          brew install libspatialite
+
+      - name: Bundle dependencies
+        run: |
+          chmod +x scripts/bundle-macos.sh
+          ./scripts/bundle-macos.sh arm64
+
+      - name: Create archive
+        run: |
+          version="${{ env.SPATIALITE_VERSION }}"
+          cd output
+          tar -czvf "../mod_spatialite-${version}-macos-arm64.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: mod_spatialite-*.tar.gz
+
+  # ============================================
+  # Linux x64
+  # ============================================
+  linux-x64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libspatialite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-mod-spatialite patchelf
+
+      - name: Bundle dependencies
+        run: |
+          chmod +x scripts/bundle-linux.sh
+          ./scripts/bundle-linux.sh x64
+
+      - name: Create archive
+        run: |
+          version="${{ env.SPATIALITE_VERSION }}"
+          cd output
+          tar -czvf "../mod_spatialite-${version}-linux-x64.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: mod_spatialite-*.tar.gz
+
+  # ============================================
+  # Linux arm64
+  # ============================================
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libspatialite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-mod-spatialite patchelf
+
+      - name: Bundle dependencies
+        run: |
+          chmod +x scripts/bundle-linux.sh
+          ./scripts/bundle-linux.sh arm64
+
+      - name: Create archive
+        run: |
+          version="${{ env.SPATIALITE_VERSION }}"
+          cd output
+          tar -czvf "../mod_spatialite-${version}-linux-arm64.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: mod_spatialite-*.tar.gz
+
+  # ============================================
+  # Create Release with all artifacts
+  # ============================================
+  release:
+    needs: [windows-x64, windows-x86, macos-x64, macos-arm64, linux-x64, linux-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.SPATIALITE_VERSION }}
+          name: mod_spatialite ${{ env.SPATIALITE_VERSION }}
+          body: |
+            Pre-built mod_spatialite ${{ env.SPATIALITE_VERSION }} binaries with all dependencies bundled.
+
+            ## Platforms
+            - Windows x64 and x86
+            - macOS Intel (x64) and Apple Silicon (arm64)
+            - Linux x64 and arm64
+
+            ## Usage
+            ```sql
+            SELECT load_extension('/path/to/mod_spatialite');
+            ```
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
