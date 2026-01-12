@@ -294,6 +294,8 @@ jobs:
   nuget:
     needs: [windows-x64, windows-x86, macos-x64, macos-arm64, linux-x64, linux-arm64]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -351,8 +353,18 @@ jobs:
           # Replace version placeholder in nuspec
           sed -i "s/\$version\$/${version}/g" Spatialite.Native.nuspec
           
+          # Create output directory
+          mkdir -p ../output
+          
+          # Install mono for running nuget.exe
+          sudo apt-get update
+          sudo apt-get install -y mono-complete
+          
+          # Download NuGet CLI
+          curl -L -o nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
+          
           # Pack the NuGet package
-          nuget pack Spatialite.Native.nuspec -OutputDirectory ../output
+          mono nuget.exe pack Spatialite.Native.nuspec -OutputDirectory ../output
 
       - name: Upload NuGet package artifact
         uses: actions/upload-artifact@v4
