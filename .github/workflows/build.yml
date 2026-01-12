@@ -350,9 +350,6 @@ jobs:
           version="${{ env.SPATIALITE_VERSION }}"
           cd nuget
           
-          # Replace version placeholder in nuspec
-          sed -i "s/\$version\$/${version}/g" Spatialite.Native.nuspec
-          
           # Create output directory
           mkdir -p ../output
           
@@ -363,8 +360,8 @@ jobs:
           # Download NuGet CLI
           curl -L -o nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
           
-          # Pack the NuGet package
-          mono nuget.exe pack Spatialite.Native.nuspec -OutputDirectory ../output
+          # Pack the NuGet package with explicit version
+          mono nuget.exe pack Spatialite.Native.nuspec -Version "${version}" -OutputDirectory ../output
 
       - name: Upload NuGet package artifact
         uses: actions/upload-artifact@v4
@@ -374,8 +371,11 @@ jobs:
 
       - name: Publish to NuGet.org
         if: github.event_name == 'release'
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          dotnet nuget push output/*.nupkg \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+          cd nuget
+          mono nuget.exe push ../output/*.nupkg \
+            -ApiKey "$NUGET_API_KEY" \
+            -Source https://api.nuget.org/v3/index.json \
+            -SkipDuplicate
