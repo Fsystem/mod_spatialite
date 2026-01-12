@@ -277,6 +277,9 @@ jobs:
             ```sql
             SELECT load_extension('/path/to/mod_spatialite');
             ```
+
+            ## NuGet Package
+            Install via NuGet: `dotnet add package Spatialite.Native --version ${{ env.SPATIALITE_VERSION }}`
           draft: false
           prerelease: false
           files: |
@@ -284,3 +287,95 @@ jobs:
             artifacts/**/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # Build and Publish NuGet Package
+  # ============================================
+  nuget:
+    needs: [windows-x64, windows-x86, macos-x64, macos-arm64, linux-x64, linux-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: find artifacts -type f
+
+      - name: Prepare NuGet package structure
+        run: |
+          version="${{ env.SPATIALITE_VERSION }}"
+          
+          # Create runtimes directory structure
+          mkdir -p nuget/runtimes/win-x64/native
+          mkdir -p nuget/runtimes/win-x86/native
+          mkdir -p nuget/runtimes/osx-x64/native
+          mkdir -p nuget/runtimes/osx-arm64/native
+          mkdir -p nuget/runtimes/linux-x64/native
+          mkdir -p nuget/runtimes/linux-arm64/native
+
+          # Extract Windows x64
+          unzip -o artifacts/windows-x64/mod_spatialite-${version}-windows-x64.zip -d nuget/runtimes/win-x64/native/
+
+          # Extract Windows x86
+          unzip -o artifacts/windows-x86/mod_spatialite-${version}-windows-x86.zip -d nuget/runtimes/win-x86/native/
+
+          # Extract macOS x64
+          tar -xzf artifacts/macos-x64/mod_spatialite-${version}-macos-x64.tar.gz -C nuget/runtimes/osx-x64/native/
+
+          # Extract macOS arm64
+          tar -xzf artifacts/macos-arm64/mod_spatialite-${version}-macos-arm64.tar.gz -C nuget/runtimes/osx-arm64/native/
+
+          # Extract Linux x64
+          tar -xzf artifacts/linux-x64/mod_spatialite-${version}-linux-x64.tar.gz -C nuget/runtimes/linux-x64/native/
+
+          # Extract Linux arm64
+          tar -xzf artifacts/linux-arm64/mod_spatialite-${version}-linux-arm64.tar.gz -C nuget/runtimes/linux-arm64/native/
+
+          echo "=== Package structure ==="
+          find nuget/runtimes -type f | head -50
+
+      - name: Build NuGet package
+        run: |
+          version="${{ env.SPATIALITE_VERSION }}"
+          cd nuget
+          
+          # Replace version placeholder in nuspec
+          sed -i "s/\$version\$/${version}/g" Spatialite.Native.nuspec
+          
+          # Create output directory
+          mkdir -p ../output
+          
+          # Install mono for running nuget.exe
+          sudo apt-get update
+          sudo apt-get install -y mono-complete
+          
+          # Download NuGet CLI
+          curl -L -o nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
+          
+          # Pack the NuGet package
+          mono nuget.exe pack Spatialite.Native.nuspec -OutputDirectory ../output
+
+      - name: Upload NuGet package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: output/*.nupkg
+
+      - name: Publish to NuGet.org
+        if: github.event_name == 'release'
+        run: |
+          dotnet nuget push output/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

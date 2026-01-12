@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <SpatialiteNativePackagePath>$(MSBuildThisFileDirectory)..\</SpatialiteNativePackagePath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <None Include="$(SpatialiteNativePackagePath)runtimes\$(RuntimeIdentifier)\native\**\*"
+          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\$(RuntimeIdentifier)\native')"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="runtimes\$(RuntimeIdentifier)\native\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- When RuntimeIdentifier is not set, copy all platform libraries -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
+    <!-- Windows x64 -->
+    <None Include="$(SpatialiteNativePackagePath)runtimes\win-x64\native\**\*"
+          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\win-x64\native')"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="runtimes\win-x64\native\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Windows x86 -->
+    <None Include="$(SpatialiteNativePackagePath)runtimes\win-x86\native\**\*"
+          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\win-x86\native')"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="runtimes\win-x86\native\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- macOS x64 -->
+    <None Include="$(SpatialiteNativePackagePath)runtimes\osx-x64\native\**\*"
+          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\osx-x64\native')"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="runtimes\osx-x64\native\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- macOS arm64 -->
+    <None Include="$(SpatialiteNativePackagePath)runtimes\osx-arm64\native\**\*"
+          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\osx-arm64\native')"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="runtimes\osx-arm64\native\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Linux x64 -->
+    <None Include="$(SpatialiteNativePackagePath)runtimes\linux-x64\native\**\*"
+          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\linux-x64\native')"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="runtimes\linux-x64\native\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Linux arm64 -->
+    <None Include="$(SpatialiteNativePackagePath)runtimes\linux-arm64\native\**\*"
+          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\linux-arm64\native')"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="runtimes\linux-arm64\native\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>
