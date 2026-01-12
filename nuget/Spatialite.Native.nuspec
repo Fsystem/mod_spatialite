@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>Spatialite.Native</id>
+    <version>$version$</version>
+    <title>SpatiaLite Native Libraries</title>
+    <authors>SpatiaLite Contributors</authors>
+    <description>Pre-built mod_spatialite native libraries for SQLite spatial extensions. Supports Windows (x64, x86), macOS (x64, arm64), and Linux (x64, arm64). Libraries are automatically copied to the runtimes directory during build.</description>
+    <license type="expression">MPL-2.0 OR GPL-2.0-or-later OR LGPL-2.1-or-later</license>
+    <projectUrl>https://www.gaia-gis.it/fossil/libspatialite/index</projectUrl>
+    <repository type="git" url="https://github.com/Fsystem/mod_spatialite.git" />
+    <tags>spatialite sqlite gis spatial native</tags>
+    <readme>docs/README.md</readme>
+  </metadata>
+  <files>
+    <!-- Windows x64 -->
+    <file src="runtimes/win-x64/native/**/*" target="runtimes/win-x64/native" />
+    <!-- Windows x86 -->
+    <file src="runtimes/win-x86/native/**/*" target="runtimes/win-x86/native" />
+    <!-- macOS x64 (Intel) -->
+    <file src="runtimes/osx-x64/native/**/*" target="runtimes/osx-x64/native" />
+    <!-- macOS arm64 (Apple Silicon) -->
+    <file src="runtimes/osx-arm64/native/**/*" target="runtimes/osx-arm64/native" />
+    <!-- Linux x64 -->
+    <file src="runtimes/linux-x64/native/**/*" target="runtimes/linux-x64/native" />
+    <!-- Linux arm64 -->
+    <file src="runtimes/linux-arm64/native/**/*" target="runtimes/linux-arm64/native" />
+    <!-- Build targets for auto-copy -->
+    <file src="build/Spatialite.Native.targets" target="build" />
+    <file src="buildTransitive/Spatialite.Native.targets" target="buildTransitive" />
+    <!-- Documentation -->
+    <file src="docs/README.md" target="docs" />
+  </files>
+</package>

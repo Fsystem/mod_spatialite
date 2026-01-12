@@ -17,6 +17,26 @@ Pre-built mod_spatialite binaries for use with SQLite extensions. These builds b
 
 Download the latest release from the [Releases] page.
 
+## NuGet Package
+
+For .NET projects, install the `Spatialite.Native` NuGet package:
+
+```bash
+dotnet add package Spatialite.Native
+```
+
+The native libraries will be automatically copied to the `runtimes/{rid}/native/` directory in your output folder during build.
+
+### Usage in .NET
+
+```csharp
+using Microsoft.Data.Sqlite;
+
+var connection = new SqliteConnection("Data Source=mydb.sqlite");
+connection.Open();
+connection.LoadExtension("mod_spatialite");
+```
+
 ## Version
 
 Current version: **5.1.0**
