@@ -7,11 +7,16 @@ on:
         description: 'SpatiaLite version to build'
         required: true
         default: '5.1.0'
+      nugetpackageversion:
+        description: 'nuget package version to publish'
+        required: true
+        default: '1.0.0'
   release:
     types: [created]
 
 env:
   SPATIALITE_VERSION: ${{ github.event.inputs.version || '5.1.0' }}
+  NUGET_PACKAGE_VERSION: ${{ github.event.inputs.nugetpackageversion || '1.0.0' }}
 
 jobs:
   # ============================================
@@ -263,7 +268,7 @@ jobs:
       - name: Create or update release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.SPATIALITE_VERSION }}
+          tag_name: v${{ env.NUGET_PACKAGE_VERSION }}
           name: mod_spatialite ${{ env.SPATIALITE_VERSION }}
           body: |
             Pre-built mod_spatialite ${{ env.SPATIALITE_VERSION }} binaries with all dependencies bundled.
@@ -279,7 +284,7 @@ jobs:
             ```
 
             ## NuGet Package
-            Install via NuGet: `dotnet add package Spatialite.Native --version ${{ env.SPATIALITE_VERSION }}`
+            Install via NuGet: `dotnet add package Spatialite.Native --version ${{ env.NUGET_PACKAGE_VERSION }}`
           draft: false
           prerelease: false
           files: |
@@ -348,6 +353,8 @@ jobs:
       - name: Build NuGet package
         run: |
           version="${{ env.SPATIALITE_VERSION }}"
+          nugetpackageversion="${{ env.NUGET_PACKAGE_VERSION }}"
+          
           cd nuget
           
           # Create output directory
@@ -361,7 +368,7 @@ jobs:
           curl -L -o nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
           
           # Pack the NuGet package with explicit version
-          mono nuget.exe pack Spatialite.Native.nuspec -Version "${version}" -OutputDirectory ../output
+          mono nuget.exe pack Spatialite.Native.nuspec -Version "${nugetpackageversion}" -OutputDirectory ../output
 
       - name: Upload NuGet package artifact
         uses: actions/upload-artifact@v4
