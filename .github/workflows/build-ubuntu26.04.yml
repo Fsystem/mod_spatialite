@@ -1,4 +1,4 @@
-name: Build mod_spatialite With Dependencies on Ubuntu 24.04
+name: Build mod_spatialite With Dependencies on Ubuntu 26.04
 
 on:
   workflow_dispatch:
@@ -194,7 +194,7 @@ jobs:
   # Linux x64
   # ============================================
   linux-x64:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 
@@ -223,7 +223,7 @@ jobs:
   # Linux arm64
   # ============================================
   linux-arm64:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@v4
 
