@@ -10,13 +10,13 @@ on:
       nugetpackageversion:
         description: 'nuget package version to publish'
         required: true
-        default: '1.0.0'
+        default: '2.0.0'
   release:
     types: [created]
 
 env:
   SPATIALITE_VERSION: ${{ github.event.inputs.version || '5.1.0' }}
-  NUGET_PACKAGE_VERSION: ${{ github.event.inputs.nugetpackageversion || '1.0.0' }}
+  NUGET_PACKAGE_VERSION: ${{ github.event.inputs.nugetpackageversion || '2.0.0' }}
 
 jobs:
   # ============================================
