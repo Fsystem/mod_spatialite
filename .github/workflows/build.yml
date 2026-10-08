@@ -4,19 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'SpatiaLite version to build'
+        description: 'SpatiaLite version to build; the NuGet package version matches this version'
         required: true
         default: '5.1.0'
-      nugetpackageversion:
-        description: 'nuget package version to publish'
-        required: true
-        default: '1.0.0'
   release:
     types: [created]
 
 env:
   SPATIALITE_VERSION: ${{ github.event.inputs.version || '5.1.0' }}
-  NUGET_PACKAGE_VERSION: ${{ github.event.inputs.nugetpackageversion || '1.0.0' }}
 
 jobs:
   # ============================================
@@ -353,8 +348,7 @@ jobs:
       - name: Build NuGet package
         run: |
           version="${{ env.SPATIALITE_VERSION }}"
-          nugetpackageversion="${{ env.NUGET_PACKAGE_VERSION }}"
-          
+        
           cd nuget
           
           # Create output directory
@@ -368,7 +362,7 @@ jobs:
           curl -L -o nuget.exe https://dist.nuget.org/win-x86-commandline/latest/nuget.exe
           
           # Pack the NuGet package with explicit version
-          mono nuget.exe pack Spatialite.Native.nuspec -Version "${nugetpackageversion}" -OutputDirectory ../output
+          mono nuget.exe pack Spatialite.Native.nuspec -Version "${version}" -OutputDirectory ../output
 
       - name: Upload NuGet package artifact
         uses: actions/upload-artifact@v4
