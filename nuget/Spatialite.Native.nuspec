@@ -26,7 +26,6 @@
     <!-- Linux arm64 -->
     <file src="runtimes/linux-arm64/native/**/*" target="runtimes/linux-arm64/native" />
     <!-- Build targets for auto-copy -->
-    <file src="build/Spatialite.Native.targets" target="build" />
     <file src="buildTransitive/Spatialite.Native.targets" target="buildTransitive" />
     <!-- Documentation -->
     <file src="docs/README.md" target="docs" />
