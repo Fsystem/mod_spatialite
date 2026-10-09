@@ -4,14 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'SpatiaLite version to build; the NuGet package version matches this version'
+        description: 'SpatiaLite version to build; the NuGet package version is this version plus nugetPackageVersionSuffix'
         required: true
         default: '5.1.0'
+      nugetPackageVersionSuffix:
+        description: 'Suffix appended to the SpatiaLite version for the NuGet package version (e.g. "-rc.1" produces 5.1.0-rc.1); leave empty for a stable release'
+        required: false
+        default: ''
   release:
     types: [created]
 
 env:
   SPATIALITE_VERSION: ${{ github.event.inputs.version || '5.1.0' }}
+  NUGET_PACKAGE_VERSION: ${{ github.event.inputs.version || '5.1.0' }}${{ github.event.inputs.nugetPackageVersionSuffix || '' }}
 
 jobs:
   # ============================================
@@ -281,7 +286,7 @@ jobs:
             ## NuGet Package
             Install via NuGet: `dotnet add package Spatialite.Native --version ${{ env.NUGET_PACKAGE_VERSION }}`
           draft: false
-          prerelease: false
+          prerelease: ${{ github.event.inputs.nugetPackageVersionSuffix != '' }}
           files: |
             artifacts/**/*.zip
             artifacts/**/*.tar.gz
@@ -347,7 +352,7 @@ jobs:
 
       - name: Build NuGet package
         run: |
-          version="${{ env.SPATIALITE_VERSION }}"
+          version="${{ env.NUGET_PACKAGE_VERSION }}"
           
           cd nuget
           

@@ -25,6 +25,8 @@ For .NET projects, install the `Spatialite.Native` NuGet package:
 dotnet add package Spatialite.Native
 ```
 
+For a prerelease version (e.g. `5.1.0-rc.1`), use `dotnet add package Spatialite.Native --prerelease` or specify the exact version with `--version`.
+
 The native libraries will be automatically copied to the `runtimes/{rid}/native/` directory in your output folder during build.
 
 ### Usage in .NET
@@ -72,9 +74,20 @@ Each platform bundle includes all required dependencies:
 
 Builds are automated via GitHub Actions. To trigger a new build:
 
-1. Create a new release tag (e.g., `v5.1.0`)
+1. Create a new release tag (e.g., `v5.1.0`), or run the workflow manually from **Actions → Run workflow**
 2. GitHub Actions will build for all platforms
-3. Binaries are attached to the release
+3. Binaries are attached to the release, and the `Spatialite.Native` NuGet package is published to NuGet.org
+
+### Workflow inputs
+
+When running the workflow manually (`workflow_dispatch`), the following inputs are available:
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `version` | SpatiaLite version to build (e.g. `5.1.0`) | `5.1.0` |
+| `nugetPackageVersionSuffix` | Suffix appended to the NuGet package version (e.g. `-rc.1` produces `5.1.0-rc.1`); leave empty for a stable release | *(empty)* |
+
+The NuGet package version is `{version}{nugetPackageVersionSuffix}` — for example `version=5.1.0` with `nugetPackageVersionSuffix=-rc.1` publishes package `5.1.0-rc.1`. The GitHub release tag follows the same scheme (`v5.1.0-rc.1`), and releases created with a non-empty suffix are automatically marked as prereleases.
 
 ## Manual Build
 
