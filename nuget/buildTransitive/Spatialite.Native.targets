@@ -1,47 +1,126 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup>
-    <SpatialiteNativePackagePath>$(MSBuildThisFileDirectory)..\</SpatialiteNativePackagePath>
-  </PropertyGroup>
+      <PropertyGroup>
+            <FswtSpatialiteNativeEnablePathInitializer Condition="'$(FswtSpatialiteNativeEnablePathInitializer)'==''">true</FswtSpatialiteNativeEnablePathInitializer>
+      </PropertyGroup>
+      <ItemGroup>
+            <PreservePackageNativeAssetLayout Include="Spatialite" PackageIdGlob="Spatialite.Native" PackageNativeAssetDirPrefix="spatialite" />
+      </ItemGroup>
+      <ItemGroup Condition="'$(FswtSpatialiteNativeEnablePathInitializer)'=='true'">
+            <Compile Include="$(MSBuildThisFileDirectory)Fswt.Spatialite.Native.PathInitializer.cs" Link="Fswt.Spatialite.Native.PathInitializer.cs" />
+      </ItemGroup>
+      <UsingTask TaskName="FswtRewriteDepsJsonKeys" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+            <ParameterGroup>
+                  <DepsJsonFile ParameterType="System.String" Required="true" />
+                  <Renames ParameterType="Microsoft.Build.Framework.ITaskItem[]" />
+            </ParameterGroup>
+            <Task>
+                  <Code Type="Fragment" Language="cs"><![CDATA[
+if (!System.IO.File.Exists(DepsJsonFile)) {
+    Log.LogMessage(Microsoft.Build.Framework.MessageImportance.Low,
+        "PreservePackageNativeAssetLayout: deps.json not found, skip: " + DepsJsonFile);
+    return true;
+}
+var text = System.IO.File.ReadAllText(DepsJsonFile);
+int count = 0;
+foreach (var item in Renames ?? new Microsoft.Build.Framework.ITaskItem[0]) {
+    var oldKey = item.GetMetadata("OldKey");
+    var newKey = item.GetMetadata("NewKey");
+    if (string.IsNullOrEmpty(oldKey) || string.IsNullOrEmpty(newKey) || oldKey == newKey) continue;
+    var oldQuoted = "\"" + oldKey + "\"";
+    if (text.Contains(oldQuoted)) {
+        text = text.Replace(oldQuoted, "\"" + newKey + "\"");
+        count++;
+    }
+}
+if (count > 0) {
+    System.IO.File.WriteAllText(DepsJsonFile, text);
+    Log.LogMessage(Microsoft.Build.Framework.MessageImportance.High,
+        "PreservePackageNativeAssetLayout: rewrote " + count + " native key(s) in " + DepsJsonFile);
+}
+return true;
+      ]]>                  </Code>
+            </Task>
+      </UsingTask>
 
-  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
-    <None Include="$(SpatialiteNativePackagePath)runtimes\$(RuntimeIdentifier)\native\**\*"
-          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\$(RuntimeIdentifier)\native')"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="runtimes\$(RuntimeIdentifier)\native\%(RecursiveDir)%(Filename)%(Extension)" />
-  </ItemGroup>
+      <Target Name="_PreservePackageNativeAssetLayoutBuildPerRule" BeforeTargets="_CopyFilesMarkedCopyLocal" Outputs="%(PreservePackageNativeAssetLayout.Identity)">
+            <PropertyGroup>
+                  <_PpnalRuleGlob>%(PreservePackageNativeAssetLayout.PackageIdGlob)</_PpnalRuleGlob>
+                  <_PpnalRuleGlob Condition="'$(_PpnalRuleGlob)' == ''">%(PreservePackageNativeAssetLayout.Identity)</_PpnalRuleGlob>
+                  <_PpnalRuleRegex>(?i)^$([System.Text.RegularExpressions.Regex]::Escape('$(_PpnalRuleGlob)').Replace('\*', '.*').Replace('\?', '.'))$</_PpnalRuleRegex>
+                  <_PpnalRuleDir>%(PreservePackageNativeAssetLayout.PackageNativeAssetDirPrefix)</_PpnalRuleDir>
+                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' != ''">$(_PpnalRuleDir)-native</_PpnalRuleDir>
+                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' == ''">native</_PpnalRuleDir>
+            </PropertyGroup>
+            <ItemGroup>
+                  <ReferenceCopyLocalPaths Condition="'%(ReferenceCopyLocalPaths.AssetType)' == 'native'
+                     and '%(ReferenceCopyLocalPaths.NuGetPackageId)' != ''
+                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ReferenceCopyLocalPaths.NuGetPackageId)', '$(_PpnalRuleRegex)'))
+                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ReferenceCopyLocalPaths.Identity)', '(?i)runtimes[/\\][^/\\]+[/\\]native[/\\]'))">
+                        <_OldKey>$([System.Text.RegularExpressions.Regex]::Match('%(ReferenceCopyLocalPaths.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/native/$2').Replace('\', '/'))</_OldKey>
+                        <_NewKey>$([System.Text.RegularExpressions.Regex]::Match('%(ReferenceCopyLocalPaths.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/$(_PpnalRuleDir)/$2').Replace('\', '/'))</_NewKey>
+                  </ReferenceCopyLocalPaths>
+                  <ReferenceCopyLocalPaths Condition="'%(ReferenceCopyLocalPaths._NewKey)' != ''">
+                        <DestinationSubDirectory>$([System.Text.RegularExpressions.Regex]::Match('%(ReferenceCopyLocalPaths._NewKey)', '^(.+)/[^/]+$').Result('$1'))/</DestinationSubDirectory>
+                  </ReferenceCopyLocalPaths>
+            </ItemGroup>
+      </Target>
 
-  <!-- When RuntimeIdentifier is not set, copy all platform libraries -->
-  <ItemGroup Condition="'$(RuntimeIdentifier)' == ''">
-    <!-- Windows x64 -->
-    <None Include="$(SpatialiteNativePackagePath)runtimes\win-x64\native\**\*"
-          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\win-x64\native')"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="runtimes\win-x64\native\%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- Windows x86 -->
-    <None Include="$(SpatialiteNativePackagePath)runtimes\win-x86\native\**\*"
-          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\win-x86\native')"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="runtimes\win-x86\native\%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- macOS x64 -->
-    <None Include="$(SpatialiteNativePackagePath)runtimes\osx-x64\native\**\*"
-          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\osx-x64\native')"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="runtimes\osx-x64\native\%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- macOS arm64 -->
-    <None Include="$(SpatialiteNativePackagePath)runtimes\osx-arm64\native\**\*"
-          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\osx-arm64\native')"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="runtimes\osx-arm64\native\%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- Linux x64 -->
-    <None Include="$(SpatialiteNativePackagePath)runtimes\linux-x64\native\**\*"
-          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\linux-x64\native')"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="runtimes\linux-x64\native\%(RecursiveDir)%(Filename)%(Extension)" />
-    <!-- Linux arm64 -->
-    <None Include="$(SpatialiteNativePackagePath)runtimes\linux-arm64\native\**\*"
-          Condition="Exists('$(SpatialiteNativePackagePath)runtimes\linux-arm64\native')"
-          CopyToOutputDirectory="PreserveNewest"
-          Link="runtimes\linux-arm64\native\%(RecursiveDir)%(Filename)%(Extension)" />
-  </ItemGroup>
+      <Target Name="_PreservePackageNativeAssetLayoutBuildReport" BeforeTargets="_CopyFilesMarkedCopyLocal">
+            <Message Importance="high" Text="PreservePackageNativeAssetLayout(build)-$(MSBuildProjectName): %(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension) -> %(ReferenceCopyLocalPaths._NewKey)" Condition="'$(PreservePackageNativeAssetLayoutVerbose)' == 'true' and '%(ReferenceCopyLocalPaths._NewKey)' != ''" />
+      </Target>
+
+      <Target Name="_PreservePackageNativeAssetLayoutBuildDepsJson" AfterTargets="Build">
+            <ItemGroup>
+                  <_PpnalDepsKeyRename Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths._OldKey)' != '' and '%(ReferenceCopyLocalPaths._OldKey)' != '%(ReferenceCopyLocalPaths._NewKey)'">
+                        <OldKey>%(ReferenceCopyLocalPaths._OldKey)</OldKey>
+                        <NewKey>%(ReferenceCopyLocalPaths._NewKey)</NewKey>
+                  </_PpnalDepsKeyRename>
+            </ItemGroup>
+            <FswtRewriteDepsJsonKeys DepsJsonFile="$(TargetDir)$(ProjectDepsFileName)" Renames="@(_PpnalDepsKeyRename)" Condition="'@(_PpnalDepsKeyRename)' != '' and '$(ProjectDepsFileName)' != ''" />
+            <ItemGroup>
+                  <_PpnalDepsKeyRename Remove="@(_PpnalDepsKeyRename)" />
+            </ItemGroup>
+      </Target>
+
+      <Target Name="_PreservePackageNativeAssetLayoutPublishPerRule" AfterTargets="ComputeResolvedFilesToPublishList" Outputs="%(PreservePackageNativeAssetLayout.Identity)">
+            <PropertyGroup>
+                  <_PpnalRuleGlob>%(PreservePackageNativeAssetLayout.PackageIdGlob)</_PpnalRuleGlob>
+                  <_PpnalRuleGlob Condition="'$(_PpnalRuleGlob)' == ''">%(PreservePackageNativeAssetLayout.Identity)</_PpnalRuleGlob>
+                  <_PpnalRuleRegex>(?i)^$([System.Text.RegularExpressions.Regex]::Escape('$(_PpnalRuleGlob)').Replace('\*', '.*').Replace('\?', '.'))$</_PpnalRuleRegex>
+                  <_PpnalRuleDir>%(PreservePackageNativeAssetLayout.PackageNativeAssetDirPrefix)</_PpnalRuleDir>
+                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' != ''">$(_PpnalRuleDir)-native</_PpnalRuleDir>
+                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' == ''">native</_PpnalRuleDir>
+            </PropertyGroup>
+            <ItemGroup>
+                  <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.AssetType)' == 'native'
+                     and '%(ResolvedFileToPublish.NuGetPackageId)' != ''
+                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.NuGetPackageId)', '$(_PpnalRuleRegex)'))
+                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.Identity)', '(?i)runtimes[/\\][^/\\]+[/\\]native[/\\]'))">
+                        <_OldKey>$([System.Text.RegularExpressions.Regex]::Match('%(ResolvedFileToPublish.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/native/$2').Replace('\', '/'))</_OldKey>
+                        <_NewKey>$([System.Text.RegularExpressions.Regex]::Match('%(ResolvedFileToPublish.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/$(_PpnalRuleDir)/$2').Replace('\', '/'))</_NewKey>
+                  </ResolvedFileToPublish>
+                  <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish._NewKey)' != ''">
+                        <RelativePath>%(ResolvedFileToPublish._NewKey)</RelativePath>
+                  </ResolvedFileToPublish>
+            </ItemGroup>
+      </Target>
+
+      <Target Name="_PreservePackageNativeAssetLayoutPublishReport" AfterTargets="ComputeResolvedFilesToPublishList">
+            <Message Importance="high" Text="PreservePackageNativeAssetLayout(publish)-$(MSBuildProjectName): %(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension) -> %(ResolvedFileToPublish.RelativePath)" Condition="'$(PreservePackageNativeAssetLayoutVerbose)' == 'true' and '%(ResolvedFileToPublish._NewKey)' != ''" />
+      </Target>
+
+      <Target Name="_PreservePackageNativeAssetLayoutPublishDepsJson" AfterTargets="Publish">
+            <ItemGroup>
+                  <_PpnalDepsKeyRename Include="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish._OldKey)' != '' and '%(ResolvedFileToPublish._OldKey)' != '%(ResolvedFileToPublish._NewKey)'">
+                        <OldKey>%(ResolvedFileToPublish._OldKey)</OldKey>
+                        <NewKey>%(ResolvedFileToPublish._NewKey)</NewKey>
+                  </_PpnalDepsKeyRename>
+            </ItemGroup>
+            <FswtRewriteDepsJsonKeys DepsJsonFile="$(PublishDir)$(ProjectDepsFileName)" Renames="@(_PpnalDepsKeyRename)" Condition="'@(_PpnalDepsKeyRename)' != '' and '$(PublishDir)' != '' and '$(ProjectDepsFileName)' != ''" />
+            <ItemGroup>
+                  <_PpnalDepsKeyRename Remove="@(_PpnalDepsKeyRename)" />
+            </ItemGroup>
+      </Target>
+
 </Project>

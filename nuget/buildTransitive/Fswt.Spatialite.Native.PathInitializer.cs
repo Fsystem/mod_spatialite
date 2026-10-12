@@ -1,0 +1,153 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace Fswt.Spatialite.Native
+{
+    internal static class PathInitializer
+    {
+        private static volatile bool _initialized;
+
+        private static volatile string _runtimeNativeDir;
+
+        private static readonly Lazy<string> _extensionPath = new(() =>
+        {
+            var extensionPattern = GetExtensionPattern();
+            var candidate = Directory
+                .EnumerateFiles(_runtimeNativeDir, extensionPattern, SearchOption.TopDirectoryOnly)
+                .OrderByDescending(static path => path, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(candidate))
+                return candidate;
+
+            throw new InvalidOperationException("Failed to get extension path.");
+        });
+    
+        public static string ExtensionPath => _extensionPath.Value;
+
+        [ModuleInitializer]
+        internal static void Initialize()
+        {
+            if (_initialized) return;
+            try
+            {
+                var baseDir = AppContext.BaseDirectory;
+                if (string.IsNullOrWhiteSpace(baseDir) || !Directory.Exists(baseDir))
+                {
+                    return;
+                }
+
+                var comparer = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal;
+
+                var runtimeNativeDir = GetRuntimeNativeDirectory(baseDir);
+                if (!string.IsNullOrEmpty(runtimeNativeDir))
+                {
+                    _runtimeNativeDir = runtimeNativeDir;
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    {
+                        PrependEnv("DYLD_LIBRARY_PATH", runtimeNativeDir, comparer);
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    {
+                        PrependEnv("LD_LIBRARY_PATH", runtimeNativeDir, comparer);
+                    }
+                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        PrependEnv("PATH", runtimeNativeDir, comparer);
+                    }
+                }
+                _initialized = true;
+            }
+            catch
+            {
+                // ignore initialization errors
+            }
+        }
+
+        private static void PrependEnv(string key, string value, StringComparer comparer)
+        {
+            var existing = Environment.GetEnvironmentVariable(key) ?? string.Empty;
+            var parts = new HashSet<string>(
+                existing.Split(new[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries),
+                comparer);
+
+            if (parts.Contains(value))
+            {
+                return;
+            }
+
+            var newValue = string.Concat(
+                value,
+                existing.Length > 0 ? Path.PathSeparator.ToString() : string.Empty,
+                existing);
+            Environment.SetEnvironmentVariable(key, newValue, EnvironmentVariableTarget.Process);
+        }
+
+        private static string? GetRuntimeNativeDirectory(string baseDir)
+        {
+            var runtimeBase = Path.Combine(baseDir, "runtimes");
+            if (!Directory.Exists(runtimeBase))
+            {
+                return null;
+            }
+
+            string? rid = null;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                rid = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                rid = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // No win-arm64 native runtime is shipped, so always use win-x64 on Windows
+                // (consistent with GdalCli.GetRuntimeRid). win-x64 natives load only in an x64
+                // process - including an x64-emulated process on Windows ARM64, but not a
+                // natively-running ARM64 process.
+                rid = "win-x64";
+            }
+
+            if (string.IsNullOrEmpty(rid))
+            {
+                return null;
+            }
+
+            var nativeDir = Path.Combine(runtimeBase, rid, "spatialite-native");
+            return Directory.Exists(nativeDir) ? nativeDir : null;
+        }
+
+        private static string GetExtensionPattern()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return "mod_spatialite*.dll";
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                return "mod_spatialite*.so*";
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                return "mod_spatialite*.dylib";
+            }
+
+            return "mod_spatialite*";
+        }
+    }
+}
+
+#if !NET5_0_OR_GREATER
+namespace System.Runtime.CompilerServices
+{
+    [AttributeUsage(AttributeTargets.Method, Inherited = false)]
+    internal sealed class ModuleInitializerAttribute : Attribute
+    {
+    }
+}
+#endif

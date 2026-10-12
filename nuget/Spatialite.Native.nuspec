@@ -27,6 +27,7 @@
     <file src="runtimes/linux-arm64/native/**/*" target="runtimes/linux-arm64/native" />
     <!-- Build targets for auto-copy -->
     <file src="buildTransitive/Spatialite.Native.targets" target="buildTransitive" />
+    <file src="buildTransitive/Fswt.Spatialite.Native.PathInitializer.cs" target="buildTransitive" />
     <!-- Documentation -->
     <file src="docs/README.md" target="docs" />
   </files>
