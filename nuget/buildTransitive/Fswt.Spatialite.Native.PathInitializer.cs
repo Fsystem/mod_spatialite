@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace Fswt.Spatialite.Native
 {
-    internal static class PathInitializer
+    public static class PathInitializer
     {
         private static volatile bool _initialized;
 
