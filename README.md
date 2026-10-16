@@ -27,7 +27,7 @@ dotnet add package Spatialite.Native
 
 For a prerelease version (e.g. `5.1.0-rc.1`), use `dotnet add package Spatialite.Native --prerelease` or specify the exact version with `--version`.
 
-The native libraries will be automatically copied to the `runtimes/{rid}/native/` directory in your output folder during build.
+The native libraries will be automatically copied to the `runtimes/{rid}/spatialite-native/` directory in your output folder during build. They are registered outside NuGet's standard `runtimes/` asset pipeline, so they never get deduplicated away when another package in the dependency graph ships a file with the same name (e.g. `libfreexl.1.dylib`).
 
 ### Usage in .NET
 

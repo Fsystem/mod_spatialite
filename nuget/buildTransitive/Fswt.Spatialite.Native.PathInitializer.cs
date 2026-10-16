@@ -1,5 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace Fswt.Spatialite.Native
 {

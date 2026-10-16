@@ -2,125 +2,76 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
       <PropertyGroup>
             <FswtSpatialiteNativeEnablePathInitializer Condition="'$(FswtSpatialiteNativeEnablePathInitializer)'==''">true</FswtSpatialiteNativeEnablePathInitializer>
+            <!-- 输出目录中本包 native 文件所在子目录：runtimes/{rid}/spatialite-native/ -->
+            <FswtSpatialiteNativeDirName Condition="'$(FswtSpatialiteNativeDirName)'==''">spatialite-native</FswtSpatialiteNativeDirName>
+            <!-- buildTransitive 目录的上一级即包版本目录：{NuGetPackageRoot}/spatialite.native/{version}/buildTransitive/ -->
+            <_FswtSpatialitePackageVersion>$([System.Text.RegularExpressions.Regex]::Match('$(MSBuildThisFileDirectory)', '(?i)spatialite\.native[/\\]([^/\\]+)[/\\]buildTransitive[/\\]?$').Result('$1'))</_FswtSpatialitePackageVersion>
       </PropertyGroup>
-      <ItemGroup>
-            <PreservePackageNativeAssetLayout Include="Spatialite" PackageIdGlob="Spatialite.Native" PackageNativeAssetDirPrefix="spatialite" />
-      </ItemGroup>
       <ItemGroup Condition="'$(FswtSpatialiteNativeEnablePathInitializer)'=='true'">
             <Compile Include="$(MSBuildThisFileDirectory)Fswt.Spatialite.Native.PathInitializer.cs" Link="Fswt.Spatialite.Native.PathInitializer.cs" />
       </ItemGroup>
-      <UsingTask TaskName="FswtRewriteDepsJsonKeys" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
-            <ParameterGroup>
-                  <DepsJsonFile ParameterType="System.String" Required="true" />
-                  <Renames ParameterType="Microsoft.Build.Framework.ITaskItem[]" />
-            </ParameterGroup>
-            <Task>
-                  <Code Type="Fragment" Language="cs"><![CDATA[
-if (!System.IO.File.Exists(DepsJsonFile)) {
-    Log.LogMessage(Microsoft.Build.Framework.MessageImportance.Low,
-        "PreservePackageNativeAssetLayout: deps.json not found, skip: " + DepsJsonFile);
-    return true;
-}
-var text = System.IO.File.ReadAllText(DepsJsonFile);
-int count = 0;
-foreach (var item in Renames ?? new Microsoft.Build.Framework.ITaskItem[0]) {
-    var oldKey = item.GetMetadata("OldKey");
-    var newKey = item.GetMetadata("NewKey");
-    if (string.IsNullOrEmpty(oldKey) || string.IsNullOrEmpty(newKey) || oldKey == newKey) continue;
-    var oldQuoted = "\"" + oldKey + "\"";
-    if (text.Contains(oldQuoted)) {
-        text = text.Replace(oldQuoted, "\"" + newKey + "\"");
-        count++;
-    }
-}
-if (count > 0) {
-    System.IO.File.WriteAllText(DepsJsonFile, text);
-    Log.LogMessage(Microsoft.Build.Framework.MessageImportance.High,
-        "PreservePackageNativeAssetLayout: rewrote " + count + " native key(s) in " + DepsJsonFile);
-}
-return true;
-      ]]>                  </Code>
-            </Task>
-      </UsingTask>
 
-      <Target Name="_PreservePackageNativeAssetLayoutBuildPerRule" BeforeTargets="_CopyFilesMarkedCopyLocal" Outputs="%(PreservePackageNativeAssetLayout.Identity)">
-            <PropertyGroup>
-                  <_PpnalRuleGlob>%(PreservePackageNativeAssetLayout.PackageIdGlob)</_PpnalRuleGlob>
-                  <_PpnalRuleGlob Condition="'$(_PpnalRuleGlob)' == ''">%(PreservePackageNativeAssetLayout.Identity)</_PpnalRuleGlob>
-                  <_PpnalRuleRegex>(?i)^$([System.Text.RegularExpressions.Regex]::Escape('$(_PpnalRuleGlob)').Replace('\*', '.*').Replace('\?', '.'))$</_PpnalRuleRegex>
-                  <_PpnalRuleDir>%(PreservePackageNativeAssetLayout.PackageNativeAssetDirPrefix)</_PpnalRuleDir>
-                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' != ''">$(_PpnalRuleDir)-native</_PpnalRuleDir>
-                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' == ''">native</_PpnalRuleDir>
-            </PropertyGroup>
+      <!--
+        完全接管本包的 native 资产管线。
+
+        包内文件位于 native-assets/{rid}/（非 NuGet 识别的 runtimes/{rid}/native/ 布局），
+        restore 不为本包产生任何 native 资产记录，SDK 的跨包冲突去重
+        （ResolvePackageFileConflicts，按目标相对路径 GetTargetPath 去重）因此不会触碰
+        本包文件——即使依赖图中另一个包也提供 runtimes/{rid}/native/ 下的同名文件
+        （如 libfreexl.1.dylib），两份文件也能在输出目录中共存。
+
+        这里把包内文件手动注册进 SDK 资产项后，标准管线自动接力：
+          ResolveLockFileCopyLocalFiles     -> ReferenceCopyLocalPaths（build 复制到输出目录）
+          _HandlePackageFileConflicts       -> 冲突 key 为 spatialite-native 路径，不与他包冲突
+          GenerateBuildDependencyFile       -> deps.json（key 取 DestinationSubPath，无需后处理改写）
+          _ResolveCopyLocalAssetsForPublish -> ResolvedFileToPublish（publish 复制）
+
+        deps.json 的写出分两种模式（DependencyContextWriter 行为）：
+          - portable（未指定 RuntimeIdentifier）：只写带 rid 的组，即 runtimeTargets 节，
+            因此注入 RuntimeTargetsCopyLocalItems（带 RuntimeIdentifier 元数据）；
+          - RID-specific（指定了 RuntimeIdentifier）：只写默认组（无 rid），即 native 节，
+            因此注入 NativeCopyLocalItems（仅当前 RID 的文件）。
+
+        时机必须在 ResolvePackageAssets（产出 SDK 资产项）之后、
+        ResolveLockFileCopyLocalFiles（合成 ReferenceCopyLocalPaths）之前。
+      -->
+      <Target Name="_FswtSpatialiteRegisterNativeAssets"
+              AfterTargets="ResolvePackageAssets"
+              BeforeTargets="ResolveLockFileCopyLocalFiles">
             <ItemGroup>
-                  <ReferenceCopyLocalPaths Condition="'%(ReferenceCopyLocalPaths.AssetType)' == 'native'
-                     and '%(ReferenceCopyLocalPaths.NuGetPackageId)' != ''
-                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ReferenceCopyLocalPaths.NuGetPackageId)', '$(_PpnalRuleRegex)'))
-                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ReferenceCopyLocalPaths.Identity)', '(?i)runtimes[/\\][^/\\]+[/\\]native[/\\]'))">
-                        <_OldKey>$([System.Text.RegularExpressions.Regex]::Match('%(ReferenceCopyLocalPaths.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/native/$2').Replace('\', '/'))</_OldKey>
-                        <_NewKey>$([System.Text.RegularExpressions.Regex]::Match('%(ReferenceCopyLocalPaths.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/$(_PpnalRuleDir)/$2').Replace('\', '/'))</_NewKey>
-                  </ReferenceCopyLocalPaths>
-                  <ReferenceCopyLocalPaths Condition="'%(ReferenceCopyLocalPaths._NewKey)' != ''">
-                        <DestinationSubDirectory>$([System.Text.RegularExpressions.Regex]::Match('%(ReferenceCopyLocalPaths._NewKey)', '^(.+)/[^/]+$').Result('$1'))/</DestinationSubDirectory>
-                  </ReferenceCopyLocalPaths>
+                  <_FswtSpatialiteNativeFile Include="$(MSBuildThisFileDirectory)..\native-assets\**\*" />
+                  <_FswtSpatialiteNativeFile>
+                        <_Rid>$([System.Text.RegularExpressions.Regex]::Match('%(_FswtSpatialiteNativeFile.RecursiveDir)', '^([^/\\]+)').Result('$1'))</_Rid>
+                        <_Leaf>$([System.Text.RegularExpressions.Regex]::Replace('%(_FswtSpatialiteNativeFile.RecursiveDir)%(_FswtSpatialiteNativeFile.FileName)%(_FswtSpatialiteNativeFile.Extension)', '^[^/\\]+[/\\]', '').Replace('\', '/'))</_Leaf>
+                  </_FswtSpatialiteNativeFile>
+                  <!-- portable（未指定 RID）：全 RID 注入 runtimeTargets 通道，deps.json 写 runtimeTargets 节（保留 rid 分组） -->
+                  <RuntimeTargetsCopyLocalItems Include="@(_FswtSpatialiteNativeFile)"
+                      Condition="'$(RuntimeIdentifier)' == '' and '%(_FswtSpatialiteNativeFile._Rid)' != ''">
+                        <AssetType>native</AssetType>
+                        <NuGetPackageId>Spatialite.Native</NuGetPackageId>
+                        <NuGetPackageVersion>$(_FswtSpatialitePackageVersion)</NuGetPackageVersion>
+                        <NuGetSourceType>Package</NuGetSourceType>
+                        <RuntimeIdentifier>%(_FswtSpatialiteNativeFile._Rid)</RuntimeIdentifier>
+                        <CopyLocal>true</CopyLocal>
+                        <DestinationSubDirectory>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/</DestinationSubDirectory>
+                        <DestinationSubPath>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Leaf)</DestinationSubPath>
+                  </RuntimeTargetsCopyLocalItems>
+                  <!-- RID-specific：仅当前 RID 注入 native 通道，deps.json 写 native 节（非 portable 只写默认组） -->
+                  <NativeCopyLocalItems Include="@(_FswtSpatialiteNativeFile)"
+                      Condition="'$(RuntimeIdentifier)' != '' and '%(_FswtSpatialiteNativeFile._Rid)' == '$(RuntimeIdentifier)'">
+                        <AssetType>native</AssetType>
+                        <NuGetPackageId>Spatialite.Native</NuGetPackageId>
+                        <NuGetPackageVersion>$(_FswtSpatialitePackageVersion)</NuGetPackageVersion>
+                        <NuGetSourceType>Package</NuGetSourceType>
+                        <CopyLocal>true</CopyLocal>
+                        <DestinationSubDirectory>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/</DestinationSubDirectory>
+                        <DestinationSubPath>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Leaf)</DestinationSubPath>
+                  </NativeCopyLocalItems>
+                  <_FswtSpatialiteNativeFile Remove="@(_FswtSpatialiteNativeFile)" />
             </ItemGroup>
+            <Message Importance="high" Condition="'$(FswtSpatialiteNativeVerbose)' == 'true' and '%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'Spatialite.Native'"
+                     Text="Spatialite.Native: %(RuntimeTargetsCopyLocalItems.Filename)%(RuntimeTargetsCopyLocalItems.Extension) -> %(RuntimeTargetsCopyLocalItems.DestinationSubPath)" />
+            <Message Importance="high" Condition="'$(FswtSpatialiteNativeVerbose)' == 'true' and '%(NativeCopyLocalItems.NuGetPackageId)' == 'Spatialite.Native'"
+                     Text="Spatialite.Native: %(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension) -> %(NativeCopyLocalItems.DestinationSubPath)" />
       </Target>
-
-      <Target Name="_PreservePackageNativeAssetLayoutBuildReport" BeforeTargets="_CopyFilesMarkedCopyLocal">
-            <Message Importance="high" Text="PreservePackageNativeAssetLayout(build)-$(MSBuildProjectName): %(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension) -> %(ReferenceCopyLocalPaths._NewKey)" Condition="'$(PreservePackageNativeAssetLayoutVerbose)' == 'true' and '%(ReferenceCopyLocalPaths._NewKey)' != ''" />
-      </Target>
-
-      <Target Name="_PreservePackageNativeAssetLayoutBuildDepsJson" AfterTargets="Build">
-            <ItemGroup>
-                  <_PpnalDepsKeyRename Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths._OldKey)' != '' and '%(ReferenceCopyLocalPaths._OldKey)' != '%(ReferenceCopyLocalPaths._NewKey)'">
-                        <OldKey>%(ReferenceCopyLocalPaths._OldKey)</OldKey>
-                        <NewKey>%(ReferenceCopyLocalPaths._NewKey)</NewKey>
-                  </_PpnalDepsKeyRename>
-            </ItemGroup>
-            <FswtRewriteDepsJsonKeys DepsJsonFile="$(TargetDir)$(ProjectDepsFileName)" Renames="@(_PpnalDepsKeyRename)" Condition="'@(_PpnalDepsKeyRename)' != '' and '$(ProjectDepsFileName)' != ''" />
-            <ItemGroup>
-                  <_PpnalDepsKeyRename Remove="@(_PpnalDepsKeyRename)" />
-            </ItemGroup>
-      </Target>
-
-      <Target Name="_PreservePackageNativeAssetLayoutPublishPerRule" AfterTargets="ComputeResolvedFilesToPublishList" Outputs="%(PreservePackageNativeAssetLayout.Identity)">
-            <PropertyGroup>
-                  <_PpnalRuleGlob>%(PreservePackageNativeAssetLayout.PackageIdGlob)</_PpnalRuleGlob>
-                  <_PpnalRuleGlob Condition="'$(_PpnalRuleGlob)' == ''">%(PreservePackageNativeAssetLayout.Identity)</_PpnalRuleGlob>
-                  <_PpnalRuleRegex>(?i)^$([System.Text.RegularExpressions.Regex]::Escape('$(_PpnalRuleGlob)').Replace('\*', '.*').Replace('\?', '.'))$</_PpnalRuleRegex>
-                  <_PpnalRuleDir>%(PreservePackageNativeAssetLayout.PackageNativeAssetDirPrefix)</_PpnalRuleDir>
-                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' != ''">$(_PpnalRuleDir)-native</_PpnalRuleDir>
-                  <_PpnalRuleDir Condition="'$(_PpnalRuleDir)' == ''">native</_PpnalRuleDir>
-            </PropertyGroup>
-            <ItemGroup>
-                  <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish.AssetType)' == 'native'
-                     and '%(ResolvedFileToPublish.NuGetPackageId)' != ''
-                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.NuGetPackageId)', '$(_PpnalRuleRegex)'))
-                     and $([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.Identity)', '(?i)runtimes[/\\][^/\\]+[/\\]native[/\\]'))">
-                        <_OldKey>$([System.Text.RegularExpressions.Regex]::Match('%(ResolvedFileToPublish.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/native/$2').Replace('\', '/'))</_OldKey>
-                        <_NewKey>$([System.Text.RegularExpressions.Regex]::Match('%(ResolvedFileToPublish.Identity)', '(?i)runtimes[/\\]([^/\\]+)[/\\]native[/\\](.+)$').Result('runtimes/$1/$(_PpnalRuleDir)/$2').Replace('\', '/'))</_NewKey>
-                  </ResolvedFileToPublish>
-                  <ResolvedFileToPublish Condition="'%(ResolvedFileToPublish._NewKey)' != ''">
-                        <RelativePath>%(ResolvedFileToPublish._NewKey)</RelativePath>
-                  </ResolvedFileToPublish>
-            </ItemGroup>
-      </Target>
-
-      <Target Name="_PreservePackageNativeAssetLayoutPublishReport" AfterTargets="ComputeResolvedFilesToPublishList">
-            <Message Importance="high" Text="PreservePackageNativeAssetLayout(publish)-$(MSBuildProjectName): %(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension) -> %(ResolvedFileToPublish.RelativePath)" Condition="'$(PreservePackageNativeAssetLayoutVerbose)' == 'true' and '%(ResolvedFileToPublish._NewKey)' != ''" />
-      </Target>
-
-      <Target Name="_PreservePackageNativeAssetLayoutPublishDepsJson" AfterTargets="Publish">
-            <ItemGroup>
-                  <_PpnalDepsKeyRename Include="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish._OldKey)' != '' and '%(ResolvedFileToPublish._OldKey)' != '%(ResolvedFileToPublish._NewKey)'">
-                        <OldKey>%(ResolvedFileToPublish._OldKey)</OldKey>
-                        <NewKey>%(ResolvedFileToPublish._NewKey)</NewKey>
-                  </_PpnalDepsKeyRename>
-            </ItemGroup>
-            <FswtRewriteDepsJsonKeys DepsJsonFile="$(PublishDir)$(ProjectDepsFileName)" Renames="@(_PpnalDepsKeyRename)" Condition="'@(_PpnalDepsKeyRename)' != '' and '$(PublishDir)' != '' and '$(ProjectDepsFileName)' != ''" />
-            <ItemGroup>
-                  <_PpnalDepsKeyRename Remove="@(_PpnalDepsKeyRename)" />
-            </ItemGroup>
-      </Target>
-
 </Project>

@@ -5,7 +5,7 @@
     <version>$version$</version>
     <title>SpatiaLite Native Libraries</title>
     <authors>SpatiaLite Contributors</authors>
-    <description>Pre-built mod_spatialite native libraries for SQLite spatial extensions. Supports Windows (x64, x86), macOS (x64, arm64), and Linux (x64, arm64). Libraries are automatically copied to the runtimes directory during build.</description>
+    <description>Pre-built mod_spatialite native libraries for SQLite spatial extensions. Supports Windows (x64, x86), macOS (x64, arm64), and Linux (x64, arm64). Libraries are automatically copied to runtimes/{rid}/spatialite-native/ in the output directory during build. Native assets are registered outside NuGet's runtimes/ asset pipeline, so they never conflict with same-named files (e.g. libfreexl) shipped by other packages.</description>
     <license type="expression">MPL-2.0 OR GPL-2.0-or-later OR LGPL-2.1-or-later</license>
     <projectUrl>https://www.gaia-gis.it/fossil/libspatialite/index</projectUrl>
     <repository type="git" url="https://github.com/Fsystem/mod_spatialite.git" />
@@ -13,18 +13,26 @@
     <readme>docs/README.md</readme>
   </metadata>
   <files>
+    <!--
+      Native assets intentionally use a native-assets/{rid}/ layout instead of NuGet's
+      runtimes/{rid}/native/ convention. Restore therefore produces no native asset records
+      for this package, and the SDK cross-package conflict dedup (keyed by destination
+      relative path) can never drop our files when another package ships same-named ones.
+      buildTransitive/Spatialite.Native.targets registers them into the SDK pipeline and
+      redirects them to runtimes/{rid}/spatialite-native/ in the output.
+    -->
     <!-- Windows x64 -->
-    <file src="runtimes/win-x64/native/**/*" target="runtimes/win-x64/native" />
+    <file src="runtimes/win-x64/native/**/*" target="native-assets/win-x64" />
     <!-- Windows x86 -->
-    <file src="runtimes/win-x86/native/**/*" target="runtimes/win-x86/native" />
+    <file src="runtimes/win-x86/native/**/*" target="native-assets/win-x86" />
     <!-- macOS x64 (Intel) -->
-    <file src="runtimes/osx-x64/native/**/*" target="runtimes/osx-x64/native" />
+    <file src="runtimes/osx-x64/native/**/*" target="native-assets/osx-x64" />
     <!-- macOS arm64 (Apple Silicon) -->
-    <file src="runtimes/osx-arm64/native/**/*" target="runtimes/osx-arm64/native" />
+    <file src="runtimes/osx-arm64/native/**/*" target="native-assets/osx-arm64" />
     <!-- Linux x64 -->
-    <file src="runtimes/linux-x64/native/**/*" target="runtimes/linux-x64/native" />
+    <file src="runtimes/linux-x64/native/**/*" target="native-assets/linux-x64" />
     <!-- Linux arm64 -->
-    <file src="runtimes/linux-arm64/native/**/*" target="runtimes/linux-arm64/native" />
+    <file src="runtimes/linux-arm64/native/**/*" target="native-assets/linux-arm64" />
     <!-- Build targets for auto-copy -->
     <file src="buildTransitive/Spatialite.Native.targets" target="buildTransitive" />
     <file src="buildTransitive/Fswt.Spatialite.Native.PathInitializer.cs" target="buildTransitive" />
