@@ -32,6 +32,12 @@
           - RID-specific（指定了 RuntimeIdentifier）：只写默认组（无 rid），即 native 节，
             因此注入 NativeCopyLocalItems（仅当前 RID 的文件）。
 
+        完整目录链必须放在 DestinationSubDirectory 里，不能只放在 DestinationSubPath：
+        SDK 的输出复制和 deps.json 写出都按 DestinationSubDirectory + Filename 构造路径，
+        只设顶层 DestinationSubDirectory 会把嵌套文件全部平铺进一个目录（同名文件互相
+        覆盖）。当前平坦布局不会触发，但保持 _Dir/_Leaf 拆分，以后加入嵌套文件时不会
+        静默损坏输出。
+
         时机必须在 ResolvePackageAssets（产出 SDK 资产项）之后、
         ResolveLockFileCopyLocalFiles（合成 ReferenceCopyLocalPaths）之前。
       -->
@@ -42,7 +48,9 @@
                   <_FswtSpatialiteNativeFile Include="$(MSBuildThisFileDirectory)..\native-assets\**\*" />
                   <_FswtSpatialiteNativeFile>
                         <_Rid>$([System.Text.RegularExpressions.Regex]::Match('%(_FswtSpatialiteNativeFile.RecursiveDir)', '^([^/\\]+)').Result('$1'))</_Rid>
-                        <_Leaf>$([System.Text.RegularExpressions.Regex]::Replace('%(_FswtSpatialiteNativeFile.RecursiveDir)%(_FswtSpatialiteNativeFile.FileName)%(_FswtSpatialiteNativeFile.Extension)', '^[^/\\]+[/\\]', '').Replace('\', '/'))</_Leaf>
+                        <!-- runtimes/{rid}/{dirName}/ 之下的目录链（当前平坦布局为空），保留尾部分隔符。 -->
+                        <_Dir>$([System.Text.RegularExpressions.Regex]::Replace('%(_FswtSpatialiteNativeFile.RecursiveDir)', '^[^/\\]+[/\\]', '').Replace('\', '/'))</_Dir>
+                        <_Leaf>%(_FswtSpatialiteNativeFile.FileName)%(_FswtSpatialiteNativeFile.Extension)</_Leaf>
                   </_FswtSpatialiteNativeFile>
                   <!-- portable（未指定 RID）：全 RID 注入 runtimeTargets 通道，deps.json 写 runtimeTargets 节（保留 rid 分组） -->
                   <RuntimeTargetsCopyLocalItems Include="@(_FswtSpatialiteNativeFile)"
@@ -53,8 +61,8 @@
                         <NuGetSourceType>Package</NuGetSourceType>
                         <RuntimeIdentifier>%(_FswtSpatialiteNativeFile._Rid)</RuntimeIdentifier>
                         <CopyLocal>true</CopyLocal>
-                        <DestinationSubDirectory>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/</DestinationSubDirectory>
-                        <DestinationSubPath>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Leaf)</DestinationSubPath>
+                        <DestinationSubDirectory>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Dir)</DestinationSubDirectory>
+                        <DestinationSubPath>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Dir)%(_FswtSpatialiteNativeFile._Leaf)</DestinationSubPath>
                   </RuntimeTargetsCopyLocalItems>
                   <!-- RID-specific：仅当前 RID 注入 native 通道，deps.json 写 native 节（非 portable 只写默认组） -->
                   <NativeCopyLocalItems Include="@(_FswtSpatialiteNativeFile)"
@@ -64,8 +72,8 @@
                         <NuGetPackageVersion>$(_FswtSpatialitePackageVersion)</NuGetPackageVersion>
                         <NuGetSourceType>Package</NuGetSourceType>
                         <CopyLocal>true</CopyLocal>
-                        <DestinationSubDirectory>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/</DestinationSubDirectory>
-                        <DestinationSubPath>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Leaf)</DestinationSubPath>
+                        <DestinationSubDirectory>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Dir)</DestinationSubDirectory>
+                        <DestinationSubPath>runtimes/%(_FswtSpatialiteNativeFile._Rid)/$(FswtSpatialiteNativeDirName)/%(_FswtSpatialiteNativeFile._Dir)%(_FswtSpatialiteNativeFile._Leaf)</DestinationSubPath>
                   </NativeCopyLocalItems>
                   <_FswtSpatialiteNativeFile Remove="@(_FswtSpatialiteNativeFile)" />
             </ItemGroup>
