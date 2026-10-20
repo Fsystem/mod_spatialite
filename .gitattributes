@@ -1,0 +1,5 @@
+# CI executes shell scripts and the workflow on Linux runners; CRLF line
+# endings would break them (e.g. /bin/bash^M bad interpreter).
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
